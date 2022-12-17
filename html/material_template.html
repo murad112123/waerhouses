@@ -35,17 +35,17 @@
       </thead>
 
       <tbody>
-        {% for product in products %}
+        {% for material in materials %}
         <tr>
-          <td>{{ product.idx }}</td>
-          <td>{{ product.code }}</td>
-          <td>{{ product.name }}</td>
-          <td>{{ product.class }}</td>
-          <td>{{ product.type }}</td>
-          <td>{{ product.quantity }}</td>
-          <td>{{ product.buy_price }}</td>
-          <td>{{ product.sell_price }}</td>
-          <td>{{ product.source }}</td>
+          <td>{{ material.idx }}</td>
+          <td>{{ material.code }}</td>
+          <td>{{ material.name }}</td>
+          <td>{{ material.class }}</td>
+          <td>{{ material.type }}</td>
+          <td>{{ material.quantity }}</td>
+          <td>{{ material.buy_price }}</td>
+          <td>{{ material.sell_price }}</td>
+          <td>{{ material.source }}</td>
         </tr>
         {% endfor %}
       </tbody>

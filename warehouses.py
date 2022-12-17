@@ -8,6 +8,7 @@ import os
 import sys
 import tempfile
 import time
+from uuid6 import uuid8
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
 import PyQt5.QtWidgets as QtWidgets
@@ -259,10 +260,9 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
     def __init__(self):
         QtWidgets.QMainWindow.__init__(self)
         Form_Main.__init__(self)
-        self.p_id = None
-        self.ch_pr = QtWidgets.QCheckBox
         self.setupUi(self)
-        self.setup_login()
+
+        self.p_id = None
 
         self.config = None
 
@@ -271,19 +271,29 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.validator_money = QtGui.QRegExpValidator(
             QtCore.QRegExp('^(\$)?(([1-9]\d{0,2}(\,\d{3})*)|([1-9]\d*)|(0))(\.\d{1,2})?$'))
 
+        self.branch_id = 0
+        self.branch_codes = None
+
         self._typing_timer_m = QtCore.QTimer()
         self.material_id = 0
         self.material_co = 0
-        self.page_size_material = PAGE_SIZE
+        self.material_codes = None
+
+        self._typing_timer_m_b = QtCore.QTimer()
+        self.material_branch_id = 0
 
         self._typing_timer_p = QtCore.QTimer()
         self.product_id = 0
         self.product_co = 0
+        self.product_codes = None
+
         self.page_size_product = PAGE_SIZE
 
         self._typing_timer_req = QtCore.QTimer()
         self.requests_id = 0
         self.page_size_requests = PAGE_SIZE
+
+        self.setup_login()
 
     def setup_login(self):
         self.menubar.setVisible(False)
@@ -310,10 +320,13 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
                     database.Database.open_database(self.config['password'])
                     p = database.db.is_user(USER)
                     if p is not None:
+                        self.branch_id = p['id']
                         self.setup_controls()
                         self.stackedWidget.setCurrentIndex(0)
                     else:
                         self.lbl_wrong.setText('* اسم المستخدم غير صحيح !!!')
+        else:
+            self.lbl_wrong.setText('* يجب ادخال كلمة المرور !!!')
 
     def change_pass_(self):
         self.stackedWidget.setCurrentIndex(2)
@@ -345,6 +358,8 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.tabWidget.tabBar().setVisible(False)
         self.tabWidget.setCurrentIndex(0)
 
+        self.branch_codes = database.db.query_csp("branches")
+
         self.setup_controls_material()
         self.setup_controls_product()
         self.setup_controls_requests()
@@ -375,8 +390,10 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
 
     def change_page_size(self, table):
         if table == 'material':
-            self.page_size_material = self.m_page_size.value()
-            self.m_page_num.setRange(1, math.ceil(int(database.db.count_row("material", 1)) / self.page_size_material))
+            self.m_page_num.setRange(1, math.ceil(int(database.db.count_row("material", 1)) / self.m_page_size.value()))
+            self._typing_timer_m.start(1000)
+        elif table == 'material_branch':
+            self.material_branch_page_num.setRange(1, math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
             self._typing_timer_m.start(1000)
         elif table == 'product':
             self.page_size_product = self.p_page_size.value()
@@ -384,8 +401,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self._typing_timer_p.start(1000)
         elif table == 'requests':
             self.page_size_requests = self.req_page_siz.value()
-            self.req_page_num.setRange(1,
-                                       math.ceil(int(database.db.count_row("requests", 1)) / self.page_size_requests))
+            self.req_page_num.setRange(1, math.ceil(int(database.db.count_row("requests", 1)) / self.page_size_requests))
             self._typing_timer_req.start(1000)
 
     def check_date_from(self, x):
@@ -416,14 +432,23 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
     # #################################################################################
     # material
     def setup_controls_material(self):
+        self.tabWidget_3.setCurrentIndex(0)
         self.m_code.setValidator(self.validator_code)
         self.m_code_search.setValidator(self.validator_code)
         self.m_less_quantity.setValidator(self.validator_int)
         self.m_price.setValidator(self.validator_money)
 
+        self.m_code_b.setText(USER)
+
         self._typing_timer_m.setSingleShot(True)
         self._typing_timer_m.timeout.connect(self.update_material_table)
 
+        # search
+        self.m_code_search.textChanged.connect(lambda text: self._typing_timer_m.start(1000))
+        self.m_name_search.textChanged.connect(lambda text: self._typing_timer_m.start(1000))
+        self.m_type_search.textChanged.connect(lambda text: self._typing_timer_m.start(1000))
+
+        self.m_page_num.setRange(1, math.ceil(int(database.db.count_row("material", 1)) / self.m_page_size.value()))
         self.m_page_num.valueChanged.connect(lambda text: self._typing_timer_m.start(1000))
         self.m_page_size.valueChanged.connect(lambda: self.change_page_size('material'))
 
@@ -446,45 +471,91 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.m_post.clicked.connect(lambda: self.m_page_num.setValue(self.m_page_num.value() + 1))
         self.m_previous.clicked.connect(lambda: self.m_page_num.setValue(self.m_page_num.value() - 1))
         self.m_last.clicked.connect(lambda: self.m_page_num.setValue(
-            math.ceil(int(database.db.count_row("material", 1)) / self.page_size_material)))
+            math.ceil(int(database.db.count_row("material", 1)) / self.m_page_size.value())))
         self.m_first.clicked.connect(lambda: self.m_page_num.setValue(1))
+
+        # ############################################################
+
+        self.m_quantity.setValidator(self.validator_int)
+        self.m_b_code_search.setValidator(self.validator_code)
+
+        self.material_codes = database.db.query_csp("material")
+
+        self.m_branches.addItem('')
+        self.m_branches.addItems(self.branch_codes.values())
+
+        self.m_branches_search.addItem('')
+        self.m_branches_search.addItem('all')
+        self.m_branches_search.addItems(self.branch_codes.values())
+
+        self.m_b_code.addItem('')
+        self.m_b_code.addItems(self.material_codes.values())
+
+        self.m_b_code.currentTextChanged.connect(self.m_b_code_change)
+
+        self._typing_timer_m_b.setSingleShot(True)
+        self._typing_timer_m_b.timeout.connect(self.update_material_branch_table)
+
+        self.m_b_code_search.textChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
+        self.m_branches_search.currentTextChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
+
+        self.material_branch_page_num.setRange(1, math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
+        self.material_branch_page_num.valueChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
+        self.material_branch_page_size.valueChanged.connect(lambda: self.change_page_size('material_branch'))
+
+        self.material_branch_table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.material_branch_table.doubleClicked.connect(lambda mi: self.fill_material_branch_info(self.material_branch_table.item(mi.row(), 0).id))
+        self.material_branch_table.clicked.connect(lambda mi: self.one_click_m_b(self.material_branch_table.item(mi.row(), 0).id))
+
+        # btn
+        self.btn_add_material_branch.clicked.connect(self.create_new_material_branch)
+        self.btn_edit_material_branch.clicked.connect(self.update_material_branch)
+        self.btn_delete_material_branch.clicked.connect(self.delete_material_branch)
+        self.btn_clear_material_branch.clicked.connect(self.clear_material_branch_inputs)
+
+        # print and to exel
+        self.btn_print_table_material_branch.clicked.connect(self.print_table_material_branch)
+        self.btn_to_exel_material_branch.clicked.connect(lambda: self.to_excel(self.m_table))
+
+        # pages
+        self.material_branch_post.clicked.connect(lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() + 1))
+        self.material_branch_previous.clicked.connect(lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() - 1))
+        self.material_branch_last.clicked.connect(lambda: self.material_branch_page_num.setValue(math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value())))
+        self.material_branch_first.clicked.connect(lambda: self.material_branch_page_num.setValue(1))
 
         self.update_material_table()
         self.clear_material_inputs()
 
-    def search_material_save(self):
-        fil = {}
-        if self.m_code_search.text():
-            fil['code'] = self.m_code_search.text()
-        if self.m_name_search.text():
-            fil['name'] = self.m_name_search.text()
-        if self.m_type_search.currentText():
-            fil['type'] = self.m_type_search.currentText()
-
-        return fil
+    def m_b_code_change(self):
+        if self.m_b_code.currentIndex() == 0:
+            self.m_b_name.clear()
+        else:
+            self.m_b_name.setText(database.db.get_material_by_code(self.m_b_code.currentText())['name'])
 
     def save_material_info(self):
+        global USER
         material = dict()
+        material['id'] = str(uuid8())
         material['code'] = self.m_code.text()
         material['name'] = self.m_name.text()
         material['description'] = self.m_desciption.text()
-        material['type'] = self.m_type.currentText()
+        material['type'] = self.m_type.text()
         if self.ch_pr.isChecked():
-            material['pu_pr'] = 1
+            material['pu_pr'] = USER
         else:
             material['pu_pr'] = 0
         material['source'] = self.m_source.text()
-        material['quantity'] = self.m_quantity.text()
         material['less_quantity'] = self.m_less_quantity.text()
         material['price'] = self.m_price.text()
         material['link'] = self.m_link.text()
-        material['place'] = self.m_place.text()
         material['note'] = self.m_note.toPlainText()
 
         return material
 
     def create_new_material(self):
+        global USER
         material = self.save_material_info()
+        material['code'] = self.m_code_b.text() + '.' + material['code']
         if material['code'] and material['name']:
             if int(database.db.count_row("material", material['code'])) == 0:
                 database.db.insert_row("material", material)
@@ -496,28 +567,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
                 QtWidgets.QMessageBox.warning(None, 'خطأ', 'إن الكود مكرر')
         else:
             QtWidgets.QMessageBox.warning(None, 'خطأ', 'يجب أن تدخل الكود واسم المادة')
-
-    def update_material_table(self):
-        fil = self.search_material_save()
-        rows = database.db.query_all_material(fil, self.page_size_material * (self.m_page_num.value() - 1),
-                                              self.page_size_material)
-        self.m_table.setRowCount(len(rows))
-        for row_idx, row in enumerate(rows):
-            self.m_table.setItem(row_idx, 0, QtWidgets.QTableWidgetItem(
-                str(row_idx + 1 + (self.page_size_material * (self.m_page_num.value() - 1)))))
-            self.m_table.item(row_idx, 0).id = row['id']
-            self.m_table.item(row_idx, 0).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.m_table.setItem(row_idx, 1, QtWidgets.QTableWidgetItem(str(row['code'])))
-            self.m_table.item(row_idx, 1).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.m_table.setItem(row_idx, 2, QtWidgets.QTableWidgetItem(row['name']))
-            self.m_table.item(row_idx, 2).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.m_table.setItem(row_idx, 3, QtWidgets.QTableWidgetItem(row['description']))
-            self.m_table.item(row_idx, 3).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.m_table.setItem(row_idx, 4, QtWidgets.QTableWidgetItem(row['type']))
-            self.m_table.item(row_idx, 4).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.m_table.setItem(row_idx, 5, QtWidgets.QTableWidgetItem(row['price']))
-            self.m_table.item(row_idx, 5).setTextAlignment(QtCore.Qt.AlignCenter)
-        self.m_table.resizeColumnsToContents()
 
     def update_material(self):
         material = self.save_material_info()
@@ -540,28 +589,8 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         else:
             QtWidgets.QMessageBox.warning(None, 'خطأ', 'يجب أن تدخل الكود واسم المادة')
 
-    def clear_material_inputs(self):
-        self.material_id = 0
-        self.material_co = 0
-        self.m_code.clear()
-        self.m_code.setFocus()
-        self.m_name.clear()
-        self.m_desciption.clear()
-        self.m_type.setCurrentIndex(0)
-        self.ch_pr.setChecked(False)
-        self.m_less_quantity.setText('0')
-        self.m_price.setText('0')
-        self.m_link.clear()
-        self.m_place.clear()
-        self.m_source.clear()
-        self.m_note.clear()
-
-        self.btn_edit_material.setEnabled(False)
-        self.btn_delete_material.setEnabled(False)
-        self.btn_add_material.setEnabled(True)
-
     def delete_material(self):
-        material = self.save_material_info()
+        material = database.db.query_row("material", self.material_id)
         msg = QtWidgets.QMessageBox()
         button_reply = msg.question(self, 'تأكيد', f"هل أنت متأكد من حذف {material['name']} ؟ ",
                                     msg.Yes | msg.No,
@@ -572,6 +601,58 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self.clear_material_inputs()
             toaster_Notify.QToaster.show_message(parent=self,
                                                  message=f"حذف مادة\nتم حذف المادة{material['name']} بنجاح")
+
+    def search_material_save(self):
+        fil = {}
+        if self.m_code_search.text():
+            fil['code'] = self.m_code_search.text()
+        if self.m_name_search.text():
+            fil['name'] = self.m_name_search.text()
+        if self.m_type_search.text():
+            fil['type'] = self.m_type_search.text()
+
+        return fil
+
+    def update_material_table(self):
+        fil = self.search_material_save()
+        rows = database.db.query_all_material(fil, self.m_page_size.value() * (self.m_page_num.value() - 1),
+                                              self.m_page_size.value())
+        self.m_table.setRowCount(len(rows))
+        for row_idx, row in enumerate(rows):
+            self.m_table.setItem(row_idx, 0, QtWidgets.QTableWidgetItem(
+                str(row_idx + 1 + (self.m_page_size.value() * (self.m_page_num.value() - 1)))))
+            self.m_table.item(row_idx, 0).id = row['id']
+            self.m_table.item(row_idx, 0).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.m_table.setItem(row_idx, 1, QtWidgets.QTableWidgetItem(str(row['code'])))
+            self.m_table.item(row_idx, 1).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.m_table.setItem(row_idx, 2, QtWidgets.QTableWidgetItem(row['name']))
+            self.m_table.item(row_idx, 2).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.m_table.setItem(row_idx, 3, QtWidgets.QTableWidgetItem(row['description']))
+            self.m_table.item(row_idx, 3).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.m_table.setItem(row_idx, 4, QtWidgets.QTableWidgetItem(row['type']))
+            self.m_table.item(row_idx, 4).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.m_table.setItem(row_idx, 5, QtWidgets.QTableWidgetItem(row['price']))
+            self.m_table.item(row_idx, 5).setTextAlignment(QtCore.Qt.AlignCenter)
+        self.m_table.resizeColumnsToContents()
+
+    def clear_material_inputs(self):
+        self.material_id = 0
+        self.material_co = 0
+        self.m_code.clear()
+        self.m_code.setFocus()
+        self.m_name.clear()
+        self.m_desciption.clear()
+        self.m_type.clear()
+        self.ch_pr.setChecked(False)
+        self.m_less_quantity.setText('0')
+        self.m_price.setText('0')
+        self.m_link.clear()
+        self.m_source.clear()
+        self.m_note.clear()
+
+        self.btn_edit_material.setEnabled(False)
+        self.btn_delete_material.setEnabled(False)
+        self.btn_add_material.setEnabled(True)
 
     def one_click_m(self, id):
         self.material_id = id
@@ -588,39 +669,50 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self.m_code.setText(material['code'])
             self.m_name.setText(material['name'])
             self.m_desciption.setText(material['description'])
-            self.m_type.setCurrentText(material['type'])
-            if material['pu_pr'] == '1':
-                self.ch_pr.setChecked(True)
-            else:
+            self.m_type.setText(material['type'])
+            if material['pu_pr'] == '0':
                 self.ch_pr.setChecked(False)
+            else:
+                self.ch_pr.setChecked(True)
             self.m_source.setText(material['source'])
             self.m_less_quantity.setText(material['less_quantity'])
             self.m_price.setText(material['price'])
             self.m_link.setText(material['link'])
-            self.m_place.setText(material['place'])
             self.m_note.setText(material['note'])
 
     def print_table_material(self):
         fil = self.search_material_save()
-        material = database.db.query_all_material(fil, 0, database.db.count_row("material", 1))
+        materials = database.db.query_all_material(fil, 0, database.db.count_row("material", 1))
+
         with open('./html/material_template.html', 'r') as f:
             template = Template(f.read())
             fp = tempfile.NamedTemporaryFile(mode='w', delete=False, dir='./html/tmp/', suffix='.html')
-            for idx, material in enumerate(material):
+            for idx, material in enumerate(materials):
                 material['idx'] = idx + 1
 
-            html = template.render(materials=material, date=time.strftime("%A, %d %B %Y %I:%M %p"))
+            html = template.render(materials=materials, date=time.strftime("%A, %d %B %Y %I:%M %p"))
             html = html.replace('style.css', '../style.css').replace('ph1.png', '../ph1.png')
             fp.write(html)
             fp.close()
             os.system('setsid firefox ' + fp.name + ' &')
 
+    def update_material_branch_table(self):
+        pass
+
+    def one_click_m_b(self, id):
+        pass
+
+    def fill_material_branch_info(self, id):
+        pass
+
+    def print_table_material_branch(self):
+        pass
+    
     # ##############################################################################
     # product
     def setup_controls_product(self):
         self.p_code.setValidator(self.validator_code)
         self.p_code_search.setValidator(self.validator_code)
-        self.p_quantity.setValidator(self.validator_int)
         self.p_price.setValidator(self.validator_money)
 
         self._typing_timer_p.setSingleShot(True)
@@ -672,7 +764,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         product['code'] = self.p_code.text()
         product['name'] = self.p_name.text()
         product['description'] = self.p_description.text()
-        product['quantity'] = self.p_quantity.text()
         product['price'] = self.m_price.text()
         product['cost'] = self.p_cost.text()
 
@@ -716,8 +807,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self.p_table.item(row_idx, 2).setTextAlignment(QtCore.Qt.AlignCenter)
             self.p_table.setItem(row_idx, 3, QtWidgets.QTableWidgetItem(row['description']))
             self.p_table.item(row_idx, 3).setTextAlignment(QtCore.Qt.AlignCenter)
-            self.p_table.setItem(row_idx, 4, QtWidgets.QTableWidgetItem(row['quantity']))
-            self.p_table.item(row_idx, 4).setTextAlignment(QtCore.Qt.AlignCenter)
             self.p_table.setItem(row_idx, 5, QtWidgets.QTableWidgetItem(row['price']))
             self.p_table.item(row_idx, 5).setTextAlignment(QtCore.Qt.AlignCenter)
             self.p_table.setItem(row_idx, 6, QtWidgets.QTableWidgetItem(row['cost']))
@@ -820,7 +909,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.p_code.setFocus()
         self.p_name.clear()
         self.p_description.clear()
-        self.p_quantity.setText('0')
         self.p_price.setText('0')
         self.p_cost.setText('0')
 
@@ -971,7 +1059,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         if self.req_code.text():
             fil['code'] = self.req_code.text()
         if self.req_brunch.currentText() != '':
-            fil['b_id'] = [k for k, v in self.branches.items() if v == self.req_brunch.currentText()][0]
+            fil['branch_id'] = [k for k, v in self.branches.items() if v == self.req_brunch.currentText()][0]
         if self.ch_req_date_from.isChecked():
             fil['date_from'] = QDate.toString(self.req_date_from.date())
             if self.ch_req_date_to.isChecked():
@@ -991,8 +1079,8 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self.req_table.item(row_idx, 0).setTextAlignment(QtCore.Qt.AlignCenter)
             self.req_table.setItem(row_idx, 1, QtWidgets.QTableWidgetItem(str(row['code'])))
             self.req_table.item(row_idx, 1).setTextAlignment(QtCore.Qt.AlignCenter)
-            row['b_id'] = self.branches[row['b_id']]
-            self.req_table.setItem(row_idx, 2, QtWidgets.QTableWidgetItem(row['b_id']))
+            row['branch_id'] = self.branches[row['branch_id']]
+            self.req_table.setItem(row_idx, 2, QtWidgets.QTableWidgetItem(row['branch_id']))
             self.req_table.item(row_idx, 2).setTextAlignment(QtCore.Qt.AlignCenter)
             self.req_table.setItem(row_idx, 3, QtWidgets.QTableWidgetItem(str(row['total_req'])))
             self.req_table.item(row_idx, 3).setTextAlignment(QtCore.Qt.AlignCenter)
