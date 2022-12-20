@@ -36,7 +36,7 @@ class Database:
         self.connection.commit()
 
     def is_user(self, username):
-        return self.connection.execute("select id from branches where code = ?", (username,)).fetchone()
+        return self.connection.execute("select id, permission from branches where code = ?", (username,)).fetchone()
 
     def count_row(self, table, r):
         if r == 1:
@@ -44,6 +44,9 @@ class Database:
         else:
             return self.connection.execute(f'select count(*) as count from {table} where code = ?', (r,)).fetchone()[
                 'count']
+
+    def count_quantity_branch(self, table, bid, mid):
+        return self.connection.execute(f"select count(*) as count from {table} where b_id = ? and m_id = ?", (bid, mid)).fetchone()['count']
 
     def get_next_id(self, table):
         if self.connection.execute(f"select max(id)+1 as seq from {table}").fetchone()['seq'] == '':
@@ -134,7 +137,25 @@ class Database:
                 filter_cmd.append(f'name like :name')
             if 'type' in filter:
                 filter['type'] = f'%{filter["type"]}%'
-                filter_cmd.append(f'type =:type')
+                filter_cmd.append(f'type like :type')
+
+            sql_cmd += ' and '.join(filter_cmd)
+            sql_cmd += f' limit {limit1}, {limit2}'
+            return self.connection.execute(sql_cmd, filter).fetchall()
+        else:
+            sql_cmd += f' limit {limit1}, {limit2}'
+            return self.connection.execute(sql_cmd).fetchall()
+
+    def query_all_material_branch(self, table, filter: dict, limit1, limit2):
+        sql_cmd = f"SELECT id, b_id, m_id, quantity, place from {table}"
+        if filter:
+            sql_cmd += " where "
+            filter_cmd = []
+            if 'b_id' in filter:
+                filter_cmd.append(f'b_id =:b_id')
+            if 'm_code' in filter:
+                filter['m_code'] = f'%{filter["m_code"]}%'
+                filter_cmd.append(f'm_id in (select id from material where code like :m_code)')
 
             sql_cmd += ' and '.join(filter_cmd)
             sql_cmd += f' limit {limit1}, {limit2}'

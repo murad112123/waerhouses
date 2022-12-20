@@ -27,6 +27,7 @@ Form_Requests, _ = uic.loadUiType('requests.ui')
 PAGE_SIZE = 10
 USER = ''
 PASS = ''
+PERMISSION = ''
 
 
 class ReadOnlyDelegate(QtWidgets.QStyledItemDelegate):
@@ -305,6 +306,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
     def enter_app(self):
         global PASS
         global USER
+        global PERMISSION
         password = self.txt_password.text()
         PASS = hashlib.sha256(password.encode()).digest()
         USER = self.txt_username.text()
@@ -321,6 +323,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
                     p = database.db.is_user(USER)
                     if p is not None:
                         self.branch_id = p['id']
+                        PERMISSION = p['permission']
                         self.setup_controls()
                         self.stackedWidget.setCurrentIndex(0)
                     else:
@@ -393,7 +396,8 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self.m_page_num.setRange(1, math.ceil(int(database.db.count_row("material", 1)) / self.m_page_size.value()))
             self._typing_timer_m.start(1000)
         elif table == 'material_branch':
-            self.material_branch_page_num.setRange(1, math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
+            self.material_branch_page_num.setRange(1, math.ceil(
+                int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
             self._typing_timer_m.start(1000)
         elif table == 'product':
             self.page_size_product = self.p_page_size.value()
@@ -401,7 +405,8 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             self._typing_timer_p.start(1000)
         elif table == 'requests':
             self.page_size_requests = self.req_page_siz.value()
-            self.req_page_num.setRange(1, math.ceil(int(database.db.count_row("requests", 1)) / self.page_size_requests))
+            self.req_page_num.setRange(1,
+                                       math.ceil(int(database.db.count_row("requests", 1)) / self.page_size_requests))
             self._typing_timer_req.start(1000)
 
     def check_date_from(self, x):
@@ -481,11 +486,15 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
 
         self.material_codes = database.db.query_csp("material")
 
-        self.m_branches.addItem('')
-        self.m_branches.addItems(self.branch_codes.values())
+        if PERMISSION == '1':
+            self.m_branches.setEnabled(True)
+            self.m_branches.addItem('')
+            self.m_branches.addItems(self.branch_codes.values())
+        else:
+            self.m_branches.addItem(USER)
+            self.m_branches.setEnabled(False)
 
         self.m_branches_search.addItem('')
-        self.m_branches_search.addItem('all')
         self.m_branches_search.addItems(self.branch_codes.values())
 
         self.m_b_code.addItem('')
@@ -499,13 +508,16 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.m_b_code_search.textChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
         self.m_branches_search.currentTextChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
 
-        self.material_branch_page_num.setRange(1, math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
+        self.material_branch_page_num.setRange(1, math.ceil(
+            int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value()))
         self.material_branch_page_num.valueChanged.connect(lambda text: self._typing_timer_m_b.start(1000))
         self.material_branch_page_size.valueChanged.connect(lambda: self.change_page_size('material_branch'))
 
         self.material_branch_table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
-        self.material_branch_table.doubleClicked.connect(lambda mi: self.fill_material_branch_info(self.material_branch_table.item(mi.row(), 0).id))
-        self.material_branch_table.clicked.connect(lambda mi: self.one_click_m_b(self.material_branch_table.item(mi.row(), 0).id))
+        self.material_branch_table.doubleClicked.connect(
+            lambda mi: self.fill_material_branch_info(self.material_branch_table.item(mi.row(), 0).id))
+        self.material_branch_table.clicked.connect(
+            lambda mi: self.one_click_m_b(self.material_branch_table.item(mi.row(), 0).id))
 
         # btn
         self.btn_add_material_branch.clicked.connect(self.create_new_material_branch)
@@ -518,13 +530,19 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.btn_to_exel_material_branch.clicked.connect(lambda: self.to_excel(self.m_table))
 
         # pages
-        self.material_branch_post.clicked.connect(lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() + 1))
-        self.material_branch_previous.clicked.connect(lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() - 1))
-        self.material_branch_last.clicked.connect(lambda: self.material_branch_page_num.setValue(math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value())))
+        self.material_branch_post.clicked.connect(
+            lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() + 1))
+        self.material_branch_previous.clicked.connect(
+            lambda: self.material_branch_page_num.setValue(self.material_branch_page_num.value() - 1))
+        self.material_branch_last.clicked.connect(lambda: self.material_branch_page_num.setValue(
+            math.ceil(int(database.db.count_row("available_m", 1)) / self.material_branch_page_size.value())))
         self.material_branch_first.clicked.connect(lambda: self.material_branch_page_num.setValue(1))
 
         self.update_material_table()
         self.clear_material_inputs()
+
+        self.update_material_branch_table()
+        self.clear_material_branch_inputs()
 
     def m_b_code_change(self):
         if self.m_b_code.currentIndex() == 0:
@@ -535,7 +553,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
     def save_material_info(self):
         global USER
         material = dict()
-        material['id'] = str(uuid8())
         material['code'] = self.m_code.text()
         material['name'] = self.m_name.text()
         material['description'] = self.m_desciption.text()
@@ -555,12 +572,12 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
     def create_new_material(self):
         global USER
         material = self.save_material_info()
+        material['id'] = str(uuid8())
         material['code'] = self.m_code_b.text() + '.' + material['code']
         if material['code'] and material['name']:
             if int(database.db.count_row("material", material['code'])) == 0:
                 database.db.insert_row("material", material)
-                toaster_Notify.QToaster.show_message(parent=self,
-                                                     message=f"إضافة مادة\nتم إضافة المادة {material['name']} بنجاح")
+                toaster_Notify.QToaster.show_message(parent=self, message=f"إضافة مادة\nتم إضافة المادة {material['name']} بنجاح")
                 self.update_material_table()
                 self.clear_material_inputs()
             else:
@@ -599,8 +616,9 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             database.db.delete_row("material", self.material_id)
             self.update_material_table()
             self.clear_material_inputs()
-            toaster_Notify.QToaster.show_message(parent=self,
-                                                 message=f"حذف مادة\nتم حذف المادة{material['name']} بنجاح")
+            toaster_Notify.QToaster.show_message(parent=self, message=f"حذف مادة\nتم حذف المادة{material['name']} بنجاح")
+
+        self.btn_delete_material.setEnabled(False)
 
     def search_material_save(self):
         fil = {}
@@ -696,33 +714,142 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             fp.close()
             os.system('setsid firefox ' + fp.name + ' &')
 
+    # #### #### #### ####
+
+    def save_material_branch_info(self):
+        material_branch = dict()
+        material_branch['b_id'] = [k for k, v in self.branch_codes.items() if v == self.m_branches.currentText()][0]
+        material_branch['m_id'] = [k for k, v in self.material_codes.items() if v == self.m_b_code.currentText()][0]
+        material_branch['quantity'] = self.m_quantity.text()
+        material_branch['place'] = self.m_place.text()
+
+        return material_branch
+
+    def create_new_material_branch(self):
+        material_branch = self.save_material_branch_info()
+
+        if material_branch['b_id'] and material_branch['m_id']:
+            if int(database.db.count_quantity_branch("available_m", material_branch['b_id'], material_branch['m_id'])) == 0:
+                material_branch['id'] = str(uuid8())
+                database.db.insert_row("available_m", material_branch)
+                self.update_material_branch_table()
+                self.clear_material_branch_inputs()
+            else:
+                QtWidgets.QMessageBox.warning(None, 'خطأ', 'المادة موجودة في المستودع')
+        else:
+            QtWidgets.QMessageBox.warning(None, 'خطأ', 'يجب أن تختار كود مادة')
+
+    def update_material_branch(self):
+        material_branch = self.save_material_branch_info()
+        material_branch['id'] = self.material_branch_id
+        database.db.update_row("available_m", material_branch)
+        self.update_material_branch_table()
+        self.clear_material_branch_inputs()
+
+    def delete_material_branch(self):
+        msg = QtWidgets.QMessageBox()
+        button_reply = msg.question(self, 'تأكيد', f"هل أنت متأكد من حذف هذا القيد ؟ ", msg.Yes | msg.No, msg.No)
+
+        if button_reply == msg.Yes:
+            database.db.delete_row("available_m", self.material_branch_id)
+            self.update_material_branch_table()
+            self.clear_material_branch_inputs()
+            toaster_Notify.QToaster.show_message(parent=self, message=f"حذف قيد تواجد مادة \nتم حذف تواجد المادة من الفرع بنجاح")
+
+        self.btn_delete_material_branch.setEnabled(False)
+
+    def search_material_branch_save(self):
+        fil = {}
+        if self.m_b_code_search.text():
+            fil['m_code'] = self.m_b_code_search.text()
+        if self.m_branches_search.currentIndex() != 0:
+            fil['b_id'] = [k for k, v in self.branch_codes.items() if v == self.m_branches_search.currentText()][0]
+
+        return fil
+
     def update_material_branch_table(self):
-        pass
+        fil = self.search_material_branch_save()
+        rows = database.db.query_all_material_branch("available_m", fil, self.material_branch_page_size.value() * (self.material_branch_page_num.value() - 1), self.material_branch_page_size.value())
+
+        self.material_branch_table.setRowCount(len(rows))
+        for row_idx, row in enumerate(rows):
+            self.material_branch_table.setItem(row_idx, 0, QtWidgets.QTableWidgetItem(
+                str(row_idx + 1 + (self.material_branch_page_size.value() * (self.material_branch_page_num.value() - 1)))))
+            self.material_branch_table.item(row_idx, 0).id = row['id']
+            self.material_branch_table.item(row_idx, 0).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.material_branch_table.setItem(row_idx, 1, QtWidgets.QTableWidgetItem(str(self.branch_codes[row['b_id']])))
+            self.material_branch_table.item(row_idx, 1).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.material_branch_table.setItem(row_idx, 2, QtWidgets.QTableWidgetItem(self.material_codes[row['m_id']]))
+            self.material_branch_table.item(row_idx, 2).setTextAlignment(QtCore.Qt.AlignCenter)
+            name = database.db.get_material_by_code(self.material_codes[row['m_id']])['name']
+            self.material_branch_table.setItem(row_idx, 3, QtWidgets.QTableWidgetItem(name))
+            self.material_branch_table.item(row_idx, 3).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.material_branch_table.setItem(row_idx, 4, QtWidgets.QTableWidgetItem(row['quantity']))
+            self.material_branch_table.item(row_idx, 4).setTextAlignment(QtCore.Qt.AlignCenter)
+            self.material_branch_table.setItem(row_idx, 5, QtWidgets.QTableWidgetItem(row['place']))
+            self.material_branch_table.item(row_idx, 5).setTextAlignment(QtCore.Qt.AlignCenter)
+        self.m_table.resizeColumnsToContents()
+
+    def clear_material_branch_inputs(self):
+        self.m_branches.setCurrentIndex(0)
+        self.m_b_code.setCurrentIndex(0)
+        self.m_b_code.setEnabled(True)
+        self.m_b_name.clear()
+        self.m_quantity.setText('0')
+        self.m_place.clear()
+
+        self.btn_edit_material_branch.setEnabled(False)
+        self.btn_delete_material_branch.setEnabled(False)
+        self.btn_add_material_branch.setEnabled(True)
 
     def one_click_m_b(self, id):
-        pass
+        self.material_branch_id = id
+        self.btn_delete_material_branch.setEnabled(True)
 
     def fill_material_branch_info(self, id):
-        pass
+        self.material_branch_id = id
+        material_branch = database.db.query_row("available_m", id)
+        if self.branch_codes[material_branch['b_id']] != USER:
+            QtWidgets.QMessageBox.warning(None, 'خطأ', 'لا يمكن تعديل تواجد المادة لفرع آخر')
+            return
+
+        self.m_b_code.setCurrentText(self.material_codes[material_branch['m_id']])
+        self.m_b_code.setEnabled(False)
+        self.m_b_name.setText(database.db.get_material_by_code(self.material_codes[material_branch['m_id']])['name'])
+        self.m_quantity.setText(material_branch['quantity'])
+        self.m_place.setText(material_branch['place'])
+
+        self.btn_add_material_branch.setEnabled(False)
+        self.btn_edit_material_branch.setEnabled(True)
+        self.btn_delete_material_branch.setEnabled(True)
 
     def print_table_material_branch(self):
         pass
-    
+
     # ##############################################################################
     # product
     def setup_controls_product(self):
+        self.tabWidget_2.setCurrentIndex(0)
         self.p_code.setValidator(self.validator_code)
         self.p_code_search.setValidator(self.validator_code)
         self.p_price.setValidator(self.validator_money)
+        self.p_cost.setValidator(self.validator_money)
+
+        self.p_code_b.setText(USER)
 
         self._typing_timer_p.setSingleShot(True)
         self._typing_timer_p.timeout.connect(self.update_product_table)
 
+        # search
+        self.p_code_search.textChanged.connect(lambda text: self._typing_timer_p.start(1000))
+        self.p_name_search.textChanged.connect(lambda text: self._typing_timer_p.start(1000))
+
+        self.p_page_num.setRange(1, math.ceil(int(database.db.count_row("product", 1)) / self.p_page_size.value()))
         self.p_page_num.valueChanged.connect(lambda text: self._typing_timer_p.start(1000))
         self.p_page_size.valueChanged.connect(lambda: self.change_page_size('product'))
 
         # table
-        self.m_table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
+        self.p_table.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.p_table.doubleClicked.connect(lambda mi: self.double_Click(self.p_table.item(mi.row(), 0).id))
         self.p_table.clicked.connect(lambda mi: self.one_click_p(self.p_table.item(mi.row(), 0).id))
 
@@ -731,7 +858,6 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.btn_add_new_product.clicked.connect(self.add_new_product)
         self.btn_clear_product.clicked.connect(self.clear_product_inputs)
         self.btn_delete_product.clicked.connect(self.delete_product)
-        self.btn_cancel_product.clicked.connect(self.cancel_product)
         self.btn_edit_show_product.clicked.connect(self.edit_show_product)
 
         # print and to exel
@@ -744,6 +870,13 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
         self.p_last.clicked.connect(lambda: self.p_page_num.setValue(
             math.ceil(int(database.db.count_row("product", 1)) / self.page_size_product)))
         self.p_first.clicked.connect(lambda: self.p_page_num.setValue(1))
+
+        delegate = ReadOnlyDelegate(self.p_mat_table)
+        self.p_mat_table.setItemDelegateForColumn(1, delegate)
+        self.p_mat_table.setItemDelegateForColumn(3, delegate)
+        self.p_mat_table.setItemDelegateForColumn(4, delegate)
+        self.p_mat_table.setItemDelegateForColumn(5, delegate)
+        self.p_mat_table.setRowCount(1)
 
         self.p_mat_table.keyReleaseEvent = self.table_key_press_event
 
@@ -924,17 +1057,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
             database.db.delete_row("product", self.product_id)
             self.update_product_table()
             self.clear_product_inputs()
-            toaster_Notify.QToaster.show_message(parent=self,
-                                                 message=f"حذف منتج\nتم حذف المنتج{product['name']} بنجاح")
-
-    def add_new_product(self):
-        self.tabWidget_2.setCurrentIndex(1)
-        self.btn_clear_product.setEnabled(True)
-        self.btn_cancel_product.setEnabled(True)
-
-    def cancel_product(self):
-        self.tabWidget_2.setCurrentIndex(0)
-        self.clear_product_inputs()
+            toaster_Notify.QToaster.show_message(parent=self, message=f"حذف منتج\nتم حذف المنتج{product['name']} بنجاح")
 
     def edit_show_product(self):
         self.tabWidget_2.setCurrentIndex(1)
@@ -947,7 +1070,7 @@ class AppMainWindow(QtWidgets.QMainWindow, Form_Main):
 
     def double_Click(self, id):
         self.product_id = id
-        self.fill_product(self.product_id)
+        self.edit_show_product()
 
     def fill_product(self, id):
         if id == 0:
