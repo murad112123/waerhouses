@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from typing import Optional
 
 import PyQt5.QtWidgets as QtWidgets
 import PyQt5.uic as uic
@@ -11,17 +10,21 @@ FormPrintDialog, _ = uic.loadUiType("dlg_choice_code.ui")
 class PrintDialog(QtWidgets.QDialog, FormPrintDialog):  # type: ignore
     table_view: QtWidgets.QTableWidget
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, table, code: str) -> None:
         QtWidgets.QDialog.__init__(self)
         FormPrintDialog.__init__(self)
         self.setupUi(self)
 
         self.result_value: dict[str, str] | None = None
         self.material: dict[str, str] | None = None
-        self.table_view_columns = ['تسلسلي', 'كود المادة', 'اسم المادة', 'السعر']
+
+        if table == "material":
+            self.table_view_columns = ['تسلسلي', 'كود المادة', 'اسم المادة', 'السعر']
+        else:
+            self.table_view_columns = ['تسلسلي', 'كود المنتج', 'اسم المنتج', 'السعر']
 
         self.setup_controls()
-        self.update_table(code)
+        self.update_table(table, code)
 
     def setup_controls(self):
         # setup table
@@ -43,8 +46,8 @@ class PrintDialog(QtWidgets.QDialog, FormPrintDialog):  # type: ignore
         self.result_value = a
         self.accept()
 
-    def update_table(self, code):
-        rows = database.db.get_material_product_by_code(code)
+    def update_table(self, table: str, code: str) -> None:
+        rows = database.db.get_material_product_by_code(table, code)
         self.table_view.setRowCount(len(rows))
         for row_idx, row in enumerate(rows):
             self.table_view.setItem(row_idx, 0, QtWidgets.QTableWidgetItem(str(row_idx + 1)))
